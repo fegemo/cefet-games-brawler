@@ -1,5 +1,6 @@
 package br.cefetmg.games.screens;
 
+import br.cefetmg.games.networking.NetworkMessageType;
 import br.cefetmg.games.networking.NetworkObserver;
 import br.cefetmg.games.networking.Server;
 import br.cefetmg.games.player.ControlledPlayer;
@@ -20,7 +21,14 @@ import com.badlogic.gdx.maps.tiled.renderers.OrthogonalTiledMapRenderer;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.net.Socket;
 import com.badlogic.gdx.utils.Array;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.util.HashMap;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  *
@@ -32,7 +40,7 @@ public class PlayingScreen extends BaseScreen implements NetworkObserver {
     private Texture hulkTexture;
     private ControlledPlayer myself;
     private Vector2 movement;
-    private Array<NetworkedPlayer> enemies;
+    private HashMap<String, NetworkedPlayer> enemies;
 
     // mapa
     private TiledMap map;
@@ -42,9 +50,15 @@ public class PlayingScreen extends BaseScreen implements NetworkObserver {
     private final int[] inFrontOfCharactersLayers = new int[]{5, 6};
     private float mapWidth;
     private MapObjects drowningObjects;
+    private final Socket socketWithServer;
 
     public PlayingScreen(Game game) {
+        this(game, null);
+    }
+    
+    public PlayingScreen(Game game, Socket socket) {
         super(game);
+        this.socketWithServer = socket;
     }
 
     @Override
@@ -55,13 +69,13 @@ public class PlayingScreen extends BaseScreen implements NetworkObserver {
         mapWidth = map.getProperties().get("width", Integer.class)
                 * map.getProperties().get("tilewidth", Integer.class);
         drowningObjects = map.getLayers().get("afogamento").getObjects();
-        
+
         // personagem
         hulkTexture = new Texture("hulk-16.png");
-        myself = (ControlledPlayer) new ControlledPlayer("me", Color.WHITE)
+        myself = (ControlledPlayer) new ControlledPlayer("me", Color.WHITE, socketWithServer)
                 .attachToMap(hulkTexture, map, 50, 190);
-        enemies = new Array<NetworkedPlayer>();
-        newPlayer("fegemo", "133.13.3.1").attachToMap(hulkTexture, map, 30, 390);
+        enemies = new HashMap<String, NetworkedPlayer>();
+//        newPlayer("fegemo", "133.13.3.1").attachToMap(hulkTexture, map, 30, 390);
 
         movement = new Vector2();
 
@@ -111,12 +125,47 @@ public class PlayingScreen extends BaseScreen implements NetworkObserver {
             }
 
         });
+        
+        
+        // inicia o handler de mensagens de rede
+        if (socketWithServer == null) {
+            return;
+        }
+        
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                BufferedReader reader = new BufferedReader(new InputStreamReader(socketWithServer.getInputStream()));
+                while (true) {
+                    try {
+                        String messageHeader = reader.readLine();
+                        NetworkMessageType messageType = NetworkMessageType.valueOf(Integer.parseInt(messageHeader));
+                        switch (messageType) {
+                            case UPDATE_PLAYER_POSITION:
+                                String playerIp = reader.readLine();
+                                float x = Float.parseFloat(reader.readLine());
+                                float y = Float.parseFloat(reader.readLine());
+                                Vector2 pos = new Vector2(x, y);
+                                playerUpdatedPositionReceived(
+                                        enemies.get(playerIp), pos);
+                        }
+                                
+                    } catch (IOException ex) {
+                        Logger.getLogger(PlayingScreen.class.getName()).log(Level.SEVERE, null, ex);
+                    }
+                    
+                    
+                }
+            }
+            
+        }).start();
+        
     }
 
-    private NetworkedPlayer newPlayer(String name, String ipAddress) {
+    private NetworkedPlayer newPlayer(String name, String ipAddress, Socket s) {
         Color color = new Color(MathUtils.random(2 ^ 24));
-        NetworkedPlayer p = new NetworkedPlayer(name, color, ipAddress);
-        enemies.add(p);
+        NetworkedPlayer p = new NetworkedPlayer(name, color, ipAddress, s);
+        enemies.put(ipAddress, p);
         return p;
     }
 
@@ -139,10 +188,10 @@ public class PlayingScreen extends BaseScreen implements NetworkObserver {
 
         camera.update();
     }
-    
+
     private void checkIfDrowned() {
         for (MapObject o : drowningObjects) {
-            Rectangle drowningRect = ((RectangleMapObject)o).getRectangle();
+            Rectangle drowningRect = ((RectangleMapObject) o).getRectangle();
             if (drowningRect.overlaps(
                     myself.avatar.sprite.getBoundingRectangle())) {
                 respawnPlayer(myself);
@@ -152,11 +201,11 @@ public class PlayingScreen extends BaseScreen implements NetworkObserver {
 
     @Override
     public void update(float dt) {
-        myself.avatar.update(dt);
         myself.move(movement.x, movement.y);
+        myself.update(dt);
         checkIfDrowned();
-        
-        for (NetworkedPlayer net : enemies) {
+
+        for (NetworkedPlayer net : enemies.values()) {
             net.update(dt);
         }
         updateCamera();
@@ -169,21 +218,31 @@ public class PlayingScreen extends BaseScreen implements NetworkObserver {
         mapRenderer.render(behindCharactersLayers);
         batch.begin();
         myself.draw(batch);
-        for (NetworkedPlayer net : enemies) {
+        for (NetworkedPlayer net : enemies.values()) {
             net.avatar.draw(batch);
         }
         batch.end();
         mapRenderer.render(inFrontOfCharactersLayers);
     }
 
+    private void respawnPlayer(Player p) {
+        p.avatar.setPosition(50, 200);
+    }
+
     @Override
-    public NetworkedPlayer newPlayerJoined(String ip, String name) {
-        return (NetworkedPlayer) newPlayer(name, ip)
+    public NetworkedPlayer newPlayerJoined(String ip, String name, Socket s) {
+        return (NetworkedPlayer) newPlayer(name, ip, s)
                 .attachToMap(hulkTexture, map, 50, 200);
     }
 
-    private void respawnPlayer(Player p) {
-        p.avatar.setPosition(50, 200);
+    @Override
+    public void playerCommandReceived(NetworkedPlayer p, String command) {
+        System.out.println("command reveived: " + command);
+    }
+
+    @Override
+    public void playerUpdatedPositionReceived(NetworkedPlayer p, Vector2 pos) {
+        p.avatar.setPosition((int) pos.x, (int) pos.y);
     }
 
 }

@@ -4,15 +4,16 @@ package br.cefetmg.games.networking;
  *
  * @author fegemo <coutinho@decom.cefetmg.br>
  */
-public enum NetworkMessage {
+public enum NetworkMessageType {
     CONNECT_REQUEST(1),
     CONNECTED_RESPONSE(2),
-    SEND_CHARACTER_COMMAND(3),
-    UPDATE_CHARACTER_POSITION(4);
+    NEW_PLAYER_JOINED(3),
+    SEND_PLAYER_COMMAND(4),
+    UPDATE_PLAYER_POSITION(5);
 
-    private final int messageId;
+    public final int messageId;
 
-    NetworkMessage(int id) {
+    NetworkMessageType(int id) {
         messageId = id;
     }
 
@@ -22,12 +23,13 @@ public enum NetworkMessage {
                 .append("\n")
                 .append(sourceIp)
                 .append("\n")
-                .append(content);
+                .append(content)
+                .append("\n");
         return b.toString();
     }
 
-    public static NetworkMessage valueOf(int id) {
-        for (NetworkMessage m : values()) {
+    public static NetworkMessageType valueOf(int id) {
+        for (NetworkMessageType m : values()) {
             if (m.messageId == id) {
                 return m;
             }

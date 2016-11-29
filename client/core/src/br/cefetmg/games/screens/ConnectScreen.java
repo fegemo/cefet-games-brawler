@@ -1,6 +1,6 @@
 package br.cefetmg.games.screens;
 
-import br.cefetmg.games.networking.NetworkMessage;
+import br.cefetmg.games.networking.NetworkMessageType;
 import br.cefetmg.games.networking.Server;
 import com.badlogic.gdx.Game;
 import com.badlogic.gdx.Gdx;
@@ -15,7 +15,9 @@ import com.badlogic.gdx.scenes.scene2d.ui.TextArea;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.scenes.scene2d.ui.VerticalGroup;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 
 /**
  *
@@ -81,7 +83,26 @@ public class ConnectScreen extends BaseScreen {
                         Protocol.TCP, textIPAddress.getText(), 9028, socketHints);
                 try {
                     // write our entered message to the stream
-                    socket.getOutputStream().write(NetworkMessage.CONNECT_REQUEST.getMessage(ipAddress, "").getBytes());
+                    socket.getOutputStream().write(
+                            NetworkMessageType.CONNECT_REQUEST
+                                    .getMessage(ipAddress, "")
+                                    .getBytes());
+                    System.out.println("Indo aguardar a resposta do servidor...");
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                    String response = reader.readLine();
+                    NetworkMessageType responseType = NetworkMessageType.valueOf(Integer.parseInt(response));
+                    if (responseType == NetworkMessageType.CONNECTED_RESPONSE) {
+                        String message = reader.readLine();
+                        System.out.println("ip = " + message);
+                        message = reader.readLine();
+                        System.out.println("message = " + message);
+                        if ("aew".equals(message)) {
+                            System.out.println("sucesso!!!!");
+                            game.setScreen(new PlayingScreen(game, socket));
+                        } else {
+                            System.out.println("erro!!!!!!!!");
+                        }
+                    }
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
